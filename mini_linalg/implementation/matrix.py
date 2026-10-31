@@ -1,5 +1,5 @@
 import numpy as np
-from mini_linalg import Vector  
+from .vector import Vector  
 
 class Matrix:
     def __init__(self, data: list[list[float]]):
