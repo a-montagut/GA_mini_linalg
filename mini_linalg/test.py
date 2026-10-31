@@ -1,11 +1,6 @@
 import pytest
 
-from mini_linalg.implementation.matrix import (
-    Matrix,
-    batch_matvec,
-    batch_matmul
-)
-from mini_linalg.implementation.vector import Vector
+from mini_linalg import Vector, Matrix, batch_matvec, batch_matmul
 
 
 
