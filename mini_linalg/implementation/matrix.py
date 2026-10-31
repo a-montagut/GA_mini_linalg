@@ -1,5 +1,6 @@
 import numpy as np
-from .vector import Vector  
+from .vector import Vector
+
 
 class Matrix:
     def __init__(self, data: list[list[float]]):
