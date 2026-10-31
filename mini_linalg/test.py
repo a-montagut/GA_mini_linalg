@@ -1,10 +1,6 @@
 import pytest
-from mini_linalg.core import (
-    Vector,
-    Matrix,
-    batch_matvec,
-    batch_matmul
-)
+
+from mini_linalg import Vector, Matrix, batch_matvec, batch_matmul
 
 
 def test_empty_vector():
