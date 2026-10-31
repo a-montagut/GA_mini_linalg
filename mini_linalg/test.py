@@ -3,7 +3,6 @@ import pytest
 from mini_linalg import Vector, Matrix, batch_matvec, batch_matmul
 
 
-
 def test_empty_vector():
     v = Vector([])
     assert len(v) == 0
