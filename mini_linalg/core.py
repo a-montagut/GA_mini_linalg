@@ -50,10 +50,10 @@ class Matrix:
         return len(self.data)
 
     def cols(self) -> int:
-        return len(self.data[0]) if self.data else 0
+        return self.data.shape[1] if self.data.ndim == 2 else 0
 
     @property
-    def shape(self) -> tuple[int, int]:
+    def shape(self) -> tuple[int, ...]:
         return self.data.shape
 
     def __getitem__(self, index):
@@ -121,3 +121,48 @@ class Matrix:
 
     def transpose(self) -> "Matrix":
         return Matrix(self.data.T.tolist())
+
+
+def batch_matvec(
+    matrices: list[Matrix],
+    vectors: list[Vector]
+) -> list[Vector]:
+    """
+    Perform pairwise matrix-vector multiplication.
+
+    Each matrix is multiplied by its corresponding vector.
+    """
+
+    if len(matrices) != len(vectors):
+        raise ValueError("Batch sizes must match.")
+
+    results = []
+
+    for matrix, vector in zip(matrices, vectors):
+        result = matrix.mat_vec(vector)
+        results.append(result)
+
+    return results
+
+
+def batch_matmul(
+    matrices_a: list[Matrix],
+    matrices_b: list[Matrix]
+) -> list[Matrix]:
+    """
+    Perform pairwise matrix-matrix multiplication.
+
+    Each matrix in the first batch is multiplied
+    by its corresponding matrix in the second batch.
+    """
+
+    if len(matrices_a) != len(matrices_b):
+        raise ValueError("Batch sizes must match.")
+
+    results = []
+
+    for A, B in zip(matrices_a, matrices_b):
+        result = A.mat_mul(B)
+        results.append(result)
+
+    return results
