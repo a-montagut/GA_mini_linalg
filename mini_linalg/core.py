@@ -122,10 +122,16 @@ class Matrix:
     def transpose(self) -> "Matrix":
         return Matrix(self.data.T.tolist())
 
+
 def batch_matvec(
     matrices: list[Matrix],
     vectors: list[Vector]
 ) -> list[Vector]:
+    """
+    Perform pairwise matrix-vector multiplication.
+
+    Each matrix is multiplied by its corresponding vector.
+    """
 
     if len(matrices) != len(vectors):
         raise ValueError("Batch sizes must match.")
