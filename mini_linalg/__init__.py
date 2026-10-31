@@ -1,8 +1,5 @@
 from .implementation.vector import Vector
-from .implementation.matrix import Matrix
+from .implementation.matrix import Matrix, batch_matvec, batch_matmul
 
-def batch_matvec(matrices, vectors):
-    ...
-
-def batch_matmul(matrices_a, matrices_b):
-    ...
+__version__ = "0.1.0"
+__all__ = ["Vector", "Matrix", "batch_matvec", "batch_matmul"]
