@@ -1,0 +1,126 @@
+Theoretical: bandwidth 38.4 GB/s | peak (base clock) float32 243.20 GFLOP/s | float64 121.60 GFLOP/s | peak (max turbo) float32 537.60 GFLOP/s | float64 268.80 GFLOP/s
+Measured:    bandwidth 20.5 GB/s | best float32 202.36 GFLOP/s | float64 99.36 GFLOP/s
+STREAM probe (all threads): copy 16.4 GB/s | add 13.2 GB/s
+STREAM probe (1 thread): copy 20.5 GB/s | add 16.6 GB/s
+
+TABLE 1 (matrix-vector, 1 thread): execution time vs problem size
+=========================================================================================================
+     N |        work | f32 time | f32 growth | f32 performance |  f64 time | f64 growth | f64 performance
+-------+-------------+----------+------------+-----------------+-----------+------------+----------------
+   128 |  32.8 kFLOP |   3.6 us |          - |    9.10 GFLOP/s |    5.5 us |          - |    5.96 GFLOP/s
+   181 |  65.5 kFLOP |   5.2 us |      x1.44 |   12.60 GFLOP/s |    8.9 us |      x1.62 |    7.36 GFLOP/s
+   256 | 131.1 kFLOP |   7.4 us |      x1.42 |   17.71 GFLOP/s |   13.8 us |      x1.55 |    9.50 GFLOP/s
+   362 | 262.1 kFLOP |  13.6 us |      x1.84 |   19.27 GFLOP/s |   29.7 us |      x2.15 |    8.82 GFLOP/s
+   512 | 524.3 kFLOP |  28.4 us |      x2.09 |   18.46 GFLOP/s |   56.3 us |      x1.90 |    9.31 GFLOP/s
+   724 |   1.0 MFLOP |  48.5 us |      x1.71 |   21.62 GFLOP/s |  111.4 us |      x1.98 |    9.41 GFLOP/s
+ 1,024 |   2.1 MFLOP | 123.2 us |      x2.54 |   17.02 GFLOP/s |  272.1 us |      x2.44 |    7.71 GFLOP/s
+ 1,448 |   4.2 MFLOP | 241.0 us |      x1.96 |   17.40 GFLOP/s |  681.4 us |      x2.50 |    6.15 GFLOP/s
+ 2,048 |   8.4 MFLOP | 621.1 us |      x2.58 |   13.51 GFLOP/s |   1.62 ms |      x2.38 |    5.17 GFLOP/s
+ 2,896 |  16.8 MFLOP |  1.34 ms |      x2.17 |   12.47 GFLOP/s |   3.33 ms |      x2.05 |    5.04 GFLOP/s
+ 4,096 |  33.6 MFLOP |  3.43 ms |      x2.55 |    9.78 GFLOP/s |   7.52 ms |      x2.26 |    4.46 GFLOP/s
+ 5,793 |  67.1 MFLOP |  6.47 ms |      x1.88 |   10.38 GFLOP/s |  14.18 ms |      x1.89 |    4.73 GFLOP/s
+ 8,192 | 134.2 MFLOP | 13.63 ms |      x2.11 |    9.85 GFLOP/s |  29.72 ms |      x2.10 |    4.52 GFLOP/s
+11,585 | 268.4 MFLOP | 25.30 ms |      x1.86 |   10.61 GFLOP/s |  59.34 ms |      x2.00 |    4.52 GFLOP/s
+16,384 | 536.9 MFLOP | 56.82 ms |      x2.25 |    9.45 GFLOP/s | 120.68 ms |      x2.03 |    4.45 GFLOP/s
+-------+-------------+----------+------------+-----------------+-----------+------------+----------------
+  N grows by sqrt(2) per row: if time ~ N^2, time grows x2.00 per row and performance stays flat.
+  At small N growth is below that: the fixed cost of each call dominates the arithmetic.
+
+TABLE 1 (matrix-matrix, 1 thread): execution time vs problem size
+=========================================================================================================
+    N |        work |  f32 time | f32 growth | f32 performance |  f64 time | f64 growth | f64 performance
+------+-------------+-----------+------------+-----------------+-----------+------------+----------------
+   64 | 524.3 kFLOP |   10.0 us |          - |   52.43 GFLOP/s |   18.3 us |          - |   28.65 GFLOP/s
+   91 |   1.5 MFLOP |   28.6 us |      x2.86 |   52.70 GFLOP/s |   47.6 us |      x2.60 |   31.66 GFLOP/s
+  128 |   4.2 MFLOP |   59.8 us |      x2.09 |   70.14 GFLOP/s |  110.1 us |      x2.31 |   38.10 GFLOP/s
+  181 |  11.9 MFLOP |  157.4 us |      x2.63 |   75.35 GFLOP/s |  299.8 us |      x2.72 |   39.56 GFLOP/s
+  256 |  33.6 MFLOP |  396.5 us |      x2.52 |   84.63 GFLOP/s |  884.2 us |      x2.95 |   37.95 GFLOP/s
+  362 |  94.9 MFLOP |   1.22 ms |      x3.07 |   77.90 GFLOP/s |   2.28 ms |      x2.58 |   41.55 GFLOP/s
+  512 | 268.4 MFLOP |   3.00 ms |      x2.46 |   89.59 GFLOP/s |   6.28 ms |      x2.75 |   42.73 GFLOP/s
+  724 | 759.0 MFLOP |   8.51 ms |      x2.84 |   89.17 GFLOP/s |  17.23 ms |      x2.74 |   44.06 GFLOP/s
+1,024 |   2.1 GFLOP |  23.77 ms |      x2.79 |   90.34 GFLOP/s |  54.27 ms |      x3.15 |   39.57 GFLOP/s
+1,448 |   6.1 GFLOP |  68.57 ms |      x2.88 |   88.55 GFLOP/s | 139.63 ms |      x2.57 |   43.49 GFLOP/s
+2,048 |  17.2 GFLOP | 189.06 ms |      x2.76 |   90.87 GFLOP/s | 405.49 ms |      x2.90 |   42.37 GFLOP/s
+2,896 |  48.6 GFLOP | 569.57 ms |      x3.01 |   85.29 GFLOP/s |    1.26 s |      x3.10 |   38.61 GFLOP/s
+4,096 | 137.4 GFLOP |    1.84 s |      x3.22 |   74.88 GFLOP/s |    3.49 s |      x2.78 |   39.36 GFLOP/s
+------+-------------+-----------+------------+-----------------+-----------+------------+----------------
+  N grows by sqrt(2) per row: if time ~ N^3, time grows x2.83 per row and performance stays flat.
+  At small N growth is below that: the fixed cost of each call dominates the arithmetic.
+
+TABLE 2: fitted scaling exponent (time ~ N^p)
+================================================================================================
+    operation |   dtype | threads |              regime |        N range | fitted p | expected p
+--------------+---------+---------+---------------------+----------------+----------+-----------
+matrix-vector | float32 |       1 |  data fits in cache |    128 - 1,024 |     1.69 |          2
+matrix-vector | float32 |       1 | data in main memory | 1,448 - 16,384 |     2.21 |          2
+matrix-vector | float64 |       1 |  data fits in cache |      128 - 724 |     1.76 |          2
+matrix-vector | float64 |       1 | data in main memory | 1,024 - 16,384 |     2.17 |          2
+matrix-matrix | float32 |       1 |            N >= 256 |    256 - 4,096 |     3.01 |          3
+matrix-matrix | float64 |       1 |            N >= 256 |    256 - 4,096 |     3.01 |          3
+matrix-vector | float32 |     all |  data fits in cache |    128 - 1,024 |     1.86 |          2
+matrix-vector | float32 |     all | data in main memory | 1,448 - 16,384 |     1.94 |          2
+matrix-vector | float64 |     all |  data fits in cache |      128 - 724 |     1.99 |          2
+matrix-vector | float64 |     all | data in main memory | 1,024 - 16,384 |     2.01 |          2
+matrix-matrix | float32 |     all |            N >= 256 |    256 - 4,096 |     2.75 |          3
+matrix-matrix | float64 |     all |            N >= 256 |    256 - 4,096 |     2.94 |          3
+--------------+---------+---------+---------------------+----------------+----------+-----------
+  Least-squares fit of log(time) = p log(N) + c inside each regime.
+  p close to the expected value = time grows linearly with the work (2N^2 or 2N^3 FLOP).
+
+TABLE 3 (float32): matrix-vector speed, cache vs main memory
+=====================================================================================================================================================
+     N | data (A+x+y) | data lives in | bandwidth 1 thr | performance 1 thr | spread 1 thr | bandwidth all thr | performance all thr | spread all thr
+-------+--------------+---------------+-----------------+-------------------+--------------+-------------------+---------------------+---------------
+   128 |      65.0 KB |         cache |       18.5 GB/s |      9.10 GFLOP/s |          3 % |         21.5 GB/s |       10.57 GFLOP/s |           13 %
+   181 |     129.4 KB |         cache |       25.5 GB/s |     12.60 GFLOP/s |          4 % |         30.1 GB/s |       14.89 GFLOP/s |            9 %
+   256 |     258.0 KB |         cache |       35.7 GB/s |     17.71 GFLOP/s |          3 % |         38.9 GB/s |       19.28 GFLOP/s |            4 %
+   362 |     514.7 KB |         cache |       38.8 GB/s |     19.27 GFLOP/s |          9 % |         37.2 GB/s |       18.52 GFLOP/s |           19 %
+   512 |       1.0 MB |         cache |       37.1 GB/s |     18.46 GFLOP/s |         10 % |         52.1 GB/s |       25.95 GFLOP/s |            8 %
+   724 |       2.0 MB |         cache |       43.4 GB/s |     21.62 GFLOP/s |          6 % |         20.9 GB/s |       10.41 GFLOP/s |           27 %
+ 1,024 |       4.0 MB |         cache |       34.1 GB/s |     17.02 GFLOP/s |         23 % |         37.8 GB/s |       18.88 GFLOP/s |           22 %
+ 1,448 |       8.0 MB |   main memory |       34.8 GB/s |     17.40 GFLOP/s |         13 % |         16.5 GB/s |        8.22 GFLOP/s |           39 %
+ 2,048 |      16.0 MB |   main memory |       27.0 GB/s |     13.51 GFLOP/s |         13 % |         21.7 GB/s |       10.84 GFLOP/s |           38 %
+ 2,896 |      32.0 MB |   main memory |       25.0 GB/s |     12.47 GFLOP/s |          7 % |         22.4 GB/s |       11.21 GFLOP/s |           23 %
+ 4,096 |      64.0 MB |   main memory |       19.6 GB/s |      9.78 GFLOP/s |         13 % |         19.3 GB/s |        9.63 GFLOP/s |           20 %
+ 5,793 |     128.1 MB |   main memory |       20.8 GB/s |     10.38 GFLOP/s |          5 % |         17.1 GB/s |        8.56 GFLOP/s |           18 %
+ 8,192 |     256.1 MB |   main memory |       19.7 GB/s |      9.85 GFLOP/s |          4 % |         21.8 GB/s |       10.91 GFLOP/s |            8 %
+11,585 |     512.1 MB |   main memory |       21.2 GB/s |     10.61 GFLOP/s |          2 % |         21.3 GB/s |       10.66 GFLOP/s |            9 %
+16,384 |       1.0 GB |   main memory |       18.9 GB/s |      9.45 GFLOP/s |          2 % |         22.2 GB/s |       11.11 GFLOP/s |            3 %
+-------+--------------+---------------+-----------------+-------------------+--------------+-------------------+---------------------+---------------
+  'cache' = the whole working set fits in the 8.0 MB CPU cache; 'main memory' = it must stream from main memory on every call.
+  spread = (median time - best time) / median time. Small spread = reproducible point; large spread = noisy, trust it less.
+
+TABLE 3 (float64): matrix-vector speed, cache vs main memory
+=====================================================================================================================================================
+     N | data (A+x+y) | data lives in | bandwidth 1 thr | performance 1 thr | spread 1 thr | bandwidth all thr | performance all thr | spread all thr
+-------+--------------+---------------+-----------------+-------------------+--------------+-------------------+---------------------+---------------
+   128 |     130.0 KB |         cache |       24.2 GB/s |      5.96 GFLOP/s |         13 % |         37.0 GB/s |        9.10 GFLOP/s |            8 %
+   181 |     258.8 KB |         cache |       29.8 GB/s |      7.36 GFLOP/s |         10 % |         36.8 GB/s |        9.10 GFLOP/s |            7 %
+   256 |     516.0 KB |         cache |       38.3 GB/s |      9.50 GFLOP/s |          7 % |         40.0 GB/s |        9.93 GFLOP/s |            6 %
+   362 |       1.0 MB |         cache |       35.5 GB/s |      8.82 GFLOP/s |         24 % |         49.3 GB/s |       12.25 GFLOP/s |            5 %
+   512 |       2.0 MB |         cache |       37.4 GB/s |      9.31 GFLOP/s |         12 % |         53.3 GB/s |       13.27 GFLOP/s |           13 %
+   724 |       4.0 MB |         cache |       37.7 GB/s |      9.41 GFLOP/s |         23 % |         28.3 GB/s |        7.05 GFLOP/s |           41 %
+ 1,024 |       8.0 MB |   main memory |       30.9 GB/s |      7.71 GFLOP/s |         17 % |         14.5 GB/s |        3.62 GFLOP/s |           44 %
+ 1,448 |      16.0 MB |   main memory |       24.7 GB/s |      6.15 GFLOP/s |         15 % |         16.6 GB/s |        4.15 GFLOP/s |           35 %
+ 2,048 |      32.0 MB |   main memory |       20.7 GB/s |      5.17 GFLOP/s |         11 % |         18.6 GB/s |        4.64 GFLOP/s |           35 %
+ 2,896 |      64.0 MB |   main memory |       20.2 GB/s |      5.04 GFLOP/s |         13 % |         16.5 GB/s |        4.11 GFLOP/s |           25 %
+ 4,096 |     128.1 MB |   main memory |       17.9 GB/s |      4.46 GFLOP/s |          6 % |         16.6 GB/s |        4.14 GFLOP/s |           21 %
+ 5,793 |     256.1 MB |   main memory |       18.9 GB/s |      4.73 GFLOP/s |         11 % |         17.3 GB/s |        4.32 GFLOP/s |           17 %
+ 8,192 |     512.1 MB |   main memory |       18.1 GB/s |      4.52 GFLOP/s |          2 % |         16.8 GB/s |        4.20 GFLOP/s |            5 %
+11,585 |       1.0 GB |   main memory |       18.1 GB/s |      4.52 GFLOP/s |          4 % |         15.0 GB/s |        3.74 GFLOP/s |            4 %
+16,384 |       2.0 GB |   main memory |       17.8 GB/s |      4.45 GFLOP/s |          1 % |         15.4 GB/s |        3.86 GFLOP/s |            8 %
+-------+--------------+---------------+-----------------+-------------------+--------------+-------------------+---------------------+---------------
+  'cache' = the whole working set fits in the 8.0 MB CPU cache; 'main memory' = it must stream from main memory on every call.
+  spread = (median time - best time) / median time. Small spread = reproducible point; large spread = noisy, trust it less.
+
+TABLE 4: cache vs main memory, matrix-vector (1 thread)
+=========================================================================
+data lives in | f32 bandwidth | f32 vs best | f64 bandwidth | f64 vs best
+--------------+---------------+-------------+---------------+------------
+        cache |     35.7 GB/s |       100 % |     36.4 GB/s |       100 %
+  main memory |     21.0 GB/s |        59 % |     18.9 GB/s |        52 %
+--------------+---------------+-------------+---------------+------------
+  Median matrix-vector bandwidth (1 thread) over all sizes in each group.
+  Theoretical main-memory bandwidth B_mem: 38.4 GB/s.
+
+Tables also written to results\tables.md
