@@ -23,7 +23,7 @@ NAME = "Report_Roofline"
 # ---------------------------------------------------------------------------
 TITLE = "Exploring the Roofline Model: matrix–vector vs. matrix–matrix multiplication"
 SUBTITLE = "Scientific Programming and Large Scale Computing — Homework 4"
-AUTHOR = "[Your name]"
+AUTHOR = "Aldana Montagut Barri"
 
 DOC = [
     ("h", "Implementation and methodology"),
@@ -463,6 +463,9 @@ def build_docx():
             p.add_run().add_picture(os.path.join(FIG, block[1] + ".png"), width=Cm(17))
             caption(f"Figure {fig}.", block[2], WD_ALIGN_PARAGRAPH.JUSTIFY)
     path = os.path.join(HERE, NAME + ".docx")
+    d.core_properties.author = AUTHOR
+    d.core_properties.last_modified_by = AUTHOR
+    d.core_properties.title = TITLE
     d.save(path)
     print("Wrote", os.path.relpath(path, HERE))
 
