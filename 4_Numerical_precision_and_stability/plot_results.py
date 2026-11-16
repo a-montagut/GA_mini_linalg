@@ -1,423 +1,200 @@
-﻿"""Generate the performance plots from results/bench_*.csv.
+"""Plots for the Roofline homework.
+
+Reads the CSV files written by benchmark.py and produces, for each run:
+
+    fig1_time_<tag>      execution time vs problem size, with N^2 / N^3 lines
+    fig2_perf_<tag>      performance (GFLOP/s) and effective bandwidth (GB/s)
+    fig3_roofline_<tag>  the Roofline diagram
 
 Usage:  python plot_results.py
-Writes figures/*.pdf and figures/*.png and prints a summary table.
 """
-import json
+import csv
+import glob
 import os
 
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-
-import kernels
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RES = os.path.join(HERE, "results")
-FIG = os.path.join(HERE, "figures")
+RESULTS = os.path.join(HERE, "results")
+FIGURES = os.path.join(HERE, "figures")
 
-# ---------------------------------------------------------------------------
-# Hardware model (Intel Core i7-8650U, Kaby Lake R, 4 cores / 8 threads,
-# AVX2 with 2 FMA units per core, dual-channel DDR4-2400).
-# Edit these values if you run on a different machine.
-# ---------------------------------------------------------------------------
-CORES = 4
-F_BASE = 1.9e9                   # base clock [Hz]
-F_TURBO = 4.2e9                  # maximum turbo clock [Hz]
-FLOP_PER_CYCLE = {"float64": 16,  # 2 FMA x 4 doubles x 2 FLOP
-                  "float32": 32}  # 2 FMA x 8 floats  x 2 FLOP
-# The clock varies between base and turbo with power and temperature, so the
-# compute ceiling is a band: P_PEAK (base clock) .. P_TURBO (max turbo).
-P_PEAK = {d: CORES * F_BASE * f / 1e9 for d, f in FLOP_PER_CYCLE.items()}
-P_TURBO = {d: CORES * F_TURBO * f / 1e9 for d, f in FLOP_PER_CYCLE.items()}
-B_THEO = 2 * 8 * 2.4e9 / 1e9     # 2 channels x 8 B x 2400 MT/s = 38.4 GB/s
-
-NAME = {"matvec": "matrix-vector", "matmul": "matrix-matrix"}
-COL = {"matvec": "#1f77b4", "matmul": "#d62728"}
-MRK = {"float32": "o", "float64": "s"}
-LS = {"float32": "-", "float64": "--"}
-
-plt.rcParams.update({"font.size": 9, "axes.grid": True, "grid.alpha": 0.3,
-                     "legend.fontsize": 7.5, "figure.dpi": 150})
+OPS = {"matvec": "matrix-vector", "matmul": "matrix-matrix"}
+DTYPES = ["float32", "float64"]
+COLOR = {"matvec": "tab:blue", "matmul": "tab:red"}
+LINE = {"float32": "-", "float64": "--"}
+MARKER = {"float32": "o", "float64": "s"}
+EXPONENT = {"matvec": 2, "matmul": 3}   # work is 2N^2 and 2N^3 FLOP
 
 
-def load(tag):
-    p = os.path.join(RES, f"bench_{tag}.csv")
-    if not os.path.exists(p):
-        return None, None
-    df = pd.read_csv(p)
-    with open(os.path.join(RES, f"machine_{tag}.json")) as f:
-        info = json.load(f)
-    return df, info
+def read_results(path):
+    """Read one benchmark CSV into a list of dictionaries, sorted by N."""
+    rows = []
+    with open(path) as f:
+        # skipinitialspace drops the padding that aligns the columns
+        for row in csv.DictReader(f, skipinitialspace=True):
+            for key in ("N", "t_median_s", "GFLOPs_median", "GBs_median",
+                        "AI_min"):
+                row[key] = float(row[key])
+            rows.append(row)
+    rows.sort(key=lambda r: r["N"])
+    return rows
+
+
+def select(rows, op, dtype):
+    """The rows of one operation and one precision."""
+    return [r for r in rows if r["op"] == op and r["dtype"] == dtype]
+
+
+def column(rows, name):
+    return np.array([r[name] for r in rows])
+
+
+def ceilings(rows):
+    """The two Roofline limits, taken from the measurements themselves.
+
+    B_mem is the bandwidth of the largest matrix-vector case: that matrix is
+    far too large for any cache, so the data comes from main memory and the
+    operation is purely memory-bound. P_peak is the best performance of the
+    run, reached by matrix-matrix multiplication, which is compute-bound.
+    Both are *attainable* limits, lower than the theoretical ones of the
+    machine; the gap to a point is the performance it leaves unused.
+    """
+    biggest = max(r["N"] for r in rows if r["op"] == "matvec")
+    b_mem = max(r["GBs_median"] for r in rows
+                if r["op"] == "matvec" and r["N"] == biggest)
+    return b_mem, max(r["GFLOPs_median"] for r in rows)
 
 
 def save(fig, name):
-    fig.savefig(os.path.join(FIG, name + ".pdf"), bbox_inches="tight")
-    fig.savefig(os.path.join(FIG, name + ".png"), bbox_inches="tight", dpi=200)
+    fig.tight_layout()
+    fig.savefig(os.path.join(FIGURES, name + ".png"), dpi=200)
     plt.close(fig)
 
 
-def fig_time(df, df1):
-    fig, ax = plt.subplots(1, 2, figsize=(7.2, 2.7))
-    for op in ("matvec", "matmul"):
-        for d in ("float32", "float64"):
-            s = df[(df.op == op) & (df.dtype == d)]
-            ax[0].loglog(s.N, s.t_median_s, LS[d], marker=MRK[d], ms=3,
-                         color=COL[op], label=f"{NAME[op]} {d}")
-    # reference slopes anchored at the largest size
-    for op, p in (("matvec", 2), ("matmul", 3)):
-        s = df[(df.op == op) & (df.dtype == "float64")]
-        N = np.array([s.N.min(), s.N.max()], float)
-        t_ref = s.t_median_s.iloc[-1] * (N / N[-1]) ** p
-        ax[0].loglog(N, t_ref * 2.5, ":", color="gray", lw=1)
-        ax[0].text(N[-1] * 0.45, t_ref[-1] * 0.6, rf"$\propto N^{p}$",
-                   color="gray", fontsize=8)
-    ax[0].set_xlabel("N"); ax[0].set_ylabel("time per call [s]")
-    ax[0].set_title("(a) execution time (median)")
-    ax[0].legend(ncol=1, loc="upper left")
+def plot_time(rows, tag):
+    """Execution time vs N, compared with the theoretical N^2 / N^3 growth."""
+    fig, ax = plt.subplots(figsize=(5.5, 4.2))
+    for op in OPS:
+        for dtype in DTYPES:
+            sel = select(rows, op, dtype)
+            ax.loglog(column(sel, "N"), column(sel, "t_median_s"),
+                      LINE[dtype] + MARKER[dtype], color=COLOR[op], ms=4,
+                      label=f"{OPS[op]}, {dtype}")
 
-    for op in ("matvec", "matmul"):
-        for frame, ls, lab in ((df, "-", "all threads"), (df1, "--", "1 thread")):
-            if frame is None:
-                continue
-            a = frame[(frame.op == op) & (frame.dtype == "float32")].set_index("N")
-            b = frame[(frame.op == op) & (frame.dtype == "float64")].set_index("N")
-            r = b.t_median_s / a.t_median_s
-            ax[1].semilogx(r.index, r.values, ls, marker="o", ms=3,
-                           color=COL[op], label=f"{NAME[op]}, {lab}")
-    ax[1].axhline(2.0, color="k", lw=0.8, ls=":")
-    ax[1].text(70, 2.05,
-               "ideal 2x", fontsize=7)
-    ax[1].set_xlabel("N"); ax[1].set_ylabel(r"$t_{64}/t_{32}$")
-    ax[1].set_title("(b) float32 speed-up over float64")
-    ax[1].legend(loc="upper left", ncol=2, fontsize=6.5)
-    ax[1].set_ylim(0.5, 5.8)
-    fig.tight_layout()
-    save(fig, "fig1_time_speedup")
+    # Reference slopes, anchored above the largest size of each operation.
+    for op in OPS:
+        p = EXPONENT[op]
+        sel = select(rows, op, "float64")
+        N = column(sel, "N")
+        t = 2 * sel[-1]["t_median_s"] * (N / N[-1]) ** p
+        ax.loglog(N, t, ":", color="gray", lw=1)
+        ax.text(N[-1], t[-1] * 1.2, f"$\\propto N^{p}$", color="gray",
+                ha="right", fontsize=9)
+
+    ax.set_xlabel("problem size N")
+    ax.set_ylabel("time per call [s]")
+    ax.set_title(f"Execution time ({tag})")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize=8)
+    save(fig, f"fig1_time_{tag}")
 
 
-def fig_perf(df, df1, B_meas):
-    fig, ax = plt.subplots(1, 2, figsize=(7.2, 2.7))
-    for op in ("matvec", "matmul"):
-        for d in ("float32", "float64"):
-            s = df[(df.op == op) & (df.dtype == d)]
-            ax[0].loglog(s.N, s.GFLOPs_median, LS[d], marker=MRK[d], ms=3,
-                         color=COL[op], label=f"{NAME[op]} {d}")
-            ax[1].loglog(s.N, s.GBs_median, LS[d], marker=MRK[d], ms=3,
-                         color=COL[op], label=f"{NAME[op]} {d}")
-            if df1 is not None:
-                s1 = df1[(df1.op == op) & (df1.dtype == d)]
-                ax[0].loglog(s1.N, s1.GFLOPs_median, LS[d], color=COL[op],
-                             alpha=0.3, lw=1)
-    for d, c in (("float64", "gray"), ("float32", "k")):
-        ax[0].axhspan(P_PEAK[d], P_TURBO[d], color=c, alpha=0.08, lw=0)
-        ax[0].axhline(P_PEAK[d], color=c, ls=":", lw=0.9)
-        ax[0].text(70, P_PEAK[d] * 1.07,
-                   f"peak {d}: {P_PEAK[d]:.0f} (base) - {P_TURBO[d]:.0f} (turbo)",
-                   fontsize=6.5, color=c)
-    ax[0].set_xlabel("N"); ax[0].set_ylabel("GFLOP/s")
-    ax[0].set_title("(a) performance (faint: 1 thread)")
-    ax[0].legend(loc="lower right", ncol=2, fontsize=6)
-    ax[0].set_ylim(0.4, P_TURBO["float32"] * 1.5)
-    hb = [ax[1].axhline(B_THEO, color="k", ls=":", lw=0.9,
-                        label=f"main memory, theoretical {B_THEO:.1f} GB/s"),
-          ax[1].axhline(B_meas, color="gray", ls="-.", lw=0.9,
-                        label=f"main memory, measured {B_meas:.1f} GB/s")]
-    ax[1].legend(handles=hb, loc="lower left", fontsize=6.5)
-    for d, s in (("float32", 4), ("float64", 8)):
-        ax[1].axvline(np.sqrt(CACHE_BYTES / s), color="tab:green", lw=0.8,
-                      ls=LS[d], alpha=0.7)
-    ax[1].text(np.sqrt(CACHE_BYTES / 4) * 1.1, 1.3, "A exceeds cache\n(f64 | f32)",
-               fontsize=7, color="tab:green", rotation=90)
-    ax[1].set_xlabel("N"); ax[1].set_ylabel("GB/s (compulsory traffic)")
-    ax[1].set_title("(b) effective bandwidth")
-    fig.tight_layout()
-    save(fig, "fig2_perf_bandwidth")
+def plot_performance(rows, tag):
+    """Performance and effective bandwidth as the problem grows."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2))
+    for op in OPS:
+        for dtype in DTYPES:
+            sel = select(rows, op, dtype)
+            style = LINE[dtype] + MARKER[dtype]
+            label = f"{OPS[op]}, {dtype}"
+            ax1.loglog(column(sel, "N"), column(sel, "GFLOPs_median"), style,
+                       color=COLOR[op], ms=4, label=label)
+            ax2.loglog(column(sel, "N"), column(sel, "GBs_median"), style,
+                       color=COLOR[op], ms=4, label=label)
+
+    b_mem, p_peak = ceilings(rows)
+    ax1.axhline(p_peak, color="k", ls=":", lw=1,
+                label=f"best measured, {p_peak:.0f} GFLOP/s")
+    ax1.set_ylim(top=p_peak * 2)
+    ax1.set_ylabel("performance [GFLOP/s]")
+    ax1.set_title("(a) performance")
+
+    ax2.axhline(b_mem, color="k", ls=":", lw=1,
+                label=f"main memory, {b_mem:.0f} GB/s")
+    ax2.set_ylabel("effective bandwidth [GB/s]")
+    ax2.set_title("(b) memory traffic")
+
+    for ax in (ax1, ax2):
+        ax.set_xlabel("problem size N")
+        ax.grid(True, which="both", alpha=0.3)
+        ax.legend(fontsize=8, loc="best")
+    fig.suptitle(f"Performance and bandwidth ({tag})")
+    save(fig, f"fig2_perf_{tag}")
 
 
-def fig_roofline(df, B_meas, P_meas):
-    fig, ax = plt.subplots(1, 2, figsize=(7.2, 2.9), sharey=True)
-    I = np.logspace(-2, 3, 400)
-    for k, d in enumerate(("float32", "float64")):
-        a = ax[k]
-        lo = np.minimum(P_PEAK[d], B_THEO * I)
-        hi = np.minimum(P_TURBO[d], B_THEO * I)
-        a.fill_between(I, lo, hi, color="k", alpha=0.08, lw=0)
-        a.loglog(I, lo, "k-", lw=1.4,
-                 label=f"theoretical, base clock ({B_THEO:.1f} GB/s, "
-                       f"{P_PEAK[d]:.0f} GF/s)")
-        a.loglog(I, hi, "k--", lw=1.0,
-                 label=f"theoretical, max turbo ({P_TURBO[d]:.0f} GF/s)")
-        a.loglog(I, np.minimum(P_meas[d], B_meas * I), "-.", color="gray", lw=1.2,
-                 label=f"measured ({B_meas:.1f} GB/s, {P_meas[d]:.0f} GF/s)")
-        B_cache = df[df.op == "matvec"].GBs_median.max()
-        a.loglog(I[I < P_PEAK[d] / B_cache], B_cache * I[I < P_PEAK[d] / B_cache],
-                 ":", color="tab:green", lw=1.2,
-                 label=f"matrix-vector from cache ({B_cache:.0f} GB/s)")
-        mv = df[(df.op == "matvec") & (df.dtype == d)]
-        incache = mv.bytes_min <= CACHE_BYTES
-        a.scatter(mv.AI_min[incache], mv.GFLOPs_median[incache], marker="o",
-                  s=18, facecolors="none", edgecolors=COL["matvec"], zorder=3,
-                  label="matrix-vector, data fits in cache")
-        a.scatter(mv.AI_min[~incache], mv.GFLOPs_median[~incache], marker="o",
-                  s=18, color=COL["matvec"], zorder=3,
-                  label="matrix-vector, data in main memory")
-        mm = df[(df.op == "matmul") & (df.dtype == d)]
-        a.scatter(mm.AI_min, mm.GFLOPs_median, marker="^", s=18,
-                  color=COL["matmul"], zorder=3, label="matrix-matrix")
-        for N in (mm.N.min(), mm.N.max()):
-            r = mm[mm.N == N].iloc[0]
-            a.annotate(f"N={N}", (r.AI_min, r.GFLOPs_median), fontsize=6.5,
-                       xytext=(0, -11), textcoords="offset points", ha="center")
-        ridge = P_PEAK[d] / B_THEO
-        a.axvline(ridge, color="k", lw=0.6, ls=":")
-        a.text(ridge * 1.1, 900, f"ridge {ridge:.1f}", fontsize=7)
-        a.set_xlabel("arithmetic intensity I [FLOP/byte]")
-        a.set_title(f"({'ab'[k]}) Roofline, {d}")
-        a.set_xlim(1e-2, 2e3); a.set_ylim(0.1, 1500)
-        a.legend(loc="lower right", fontsize=5.3)
-    ax[0].set_ylabel("performance [GFLOP/s]")
-    fig.tight_layout()
-    save(fig, "fig3_roofline")
+def plot_roofline(rows, tag):
+    """Roofline: measured performance against the two hardware limits."""
+    fig, ax = plt.subplots(figsize=(5.5, 4.2))
+
+    b_mem, p_peak = ceilings(rows)
+    ridge = p_peak / b_mem
+    I = np.logspace(-2, 3, 200)
+    ax.loglog(I, np.minimum(p_peak, b_mem * I), "k-", lw=1.5,
+              label=f"measured roofline ({b_mem:.0f} GB/s, "
+                    f"{p_peak:.0f} GFLOP/s)")
+    ax.axvline(ridge, color="gray", ls=":", lw=1)
+    ax.text(ridge * 1.15, p_peak * 1.5,
+            f"ridge point\nI = {ridge:.1f} FLOP/byte", fontsize=8, color="gray")
+
+    for op in OPS:
+        for dtype in DTYPES:
+            sel = select(rows, op, dtype)
+            ax.loglog(column(sel, "AI_min"), column(sel, "GFLOPs_median"),
+                      MARKER[dtype], ls="none", color=COLOR[op], ms=5,
+                      mfc="none", label=f"{OPS[op]}, {dtype}")
+
+    ax.set_xlabel("arithmetic intensity I [FLOP/byte]")
+    ax.set_ylabel("performance [GFLOP/s]")
+    ax.set_title(f"Roofline model ({tag})")
+    ax.set_ylim(0.1, p_peak * 5)
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize=8, loc="lower right")
+    save(fig, f"fig3_roofline_{tag}")
 
 
-# ---------------------------------------------------------------------------
-# Human-readable tables
-# ---------------------------------------------------------------------------
-# Size of the CPU cache (last level, 8 MB L3 on the i7-8650U, shared by all
-# cores). Data larger than this must stream from main memory on every call.
-CACHE_BYTES = 8 * 2**20
-LEVELS = ("cache", "main memory")
-EXPECTED_P = {"matvec": 2, "matmul": 3}
-DTYPES = ("float32", "float64")
+def print_summary(rows, tag):
+    """Short table of the measurements, one line per point."""
+    print(f"\nResults for {tag}")
+    print(f"{'operation':14s} {'dtype':8s} {'N':>6s} {'time [s]':>11s} "
+          f"{'GFLOP/s':>9s} {'GB/s':>8s} {'I [FLOP/B]':>11s}")
+    for op in OPS:
+        for dtype in DTYPES:
+            for r in select(rows, op, dtype):
+                print(f"{OPS[op]:14s} {dtype:8s} {int(r['N']):6d} "
+                      f"{r['t_median_s']:11.3e} {r['GFLOPs_median']:9.2f} "
+                      f"{r['GBs_median']:8.2f} {r['AI_min']:11.2f}")
 
-
-def fmt_time(t):
-    if t < 1e-3:
-        return f"{t * 1e6:.1f} us"
-    if t < 1:
-        return f"{t * 1e3:.2f} ms"
-    return f"{t:.2f} s"
-
-
-def fmt_size(b):
-    for unit, k in (("GB", 2**30), ("MB", 2**20), ("KB", 2**10)):
-        if b >= k:
-            return f"{b / k:.1f} {unit}"
-    return f"{b:.0f} B"
-
-
-def fmt_count(x):
-    for unit, k in (("G", 1e9), ("M", 1e6), ("k", 1e3)):
-        if x >= k:
-            return f"{x / k:.1f} {unit}"
-    return f"{x:.0f}"
-
-
-def cache_level(nbytes):
-    """'cache' if the whole working set fits in the cache, else 'main memory'."""
-    return "cache" if nbytes <= CACHE_BYTES else "main memory"
-
-
-def pick(frame, op, d, N=None):
-    s = frame[(frame.op == op) & (frame.dtype == d)]
-    return s if N is None else s[s.N == N].iloc[0]
-
-
-def fit_p(s):
-    """Slope of log(time) vs log(N): time ~ N^p."""
-    if len(s) < 2:
-        return float("nan")
-    return float(np.polyfit(np.log(s.N), np.log(s.t_median_s), 1)[0])
-
-
-def render(title, headers, rows, notes=(), md=False):
-    if md:
-        out = [f"### {title}", "",
-               "| " + " | ".join(headers) + " |",
-               "|" + "|".join("---:" for _ in headers) + "|"]
-        out += ["| " + " | ".join(r) + " |" for r in rows]
-        out += [""] + [f"> {n}  " for n in notes]
-        return "\n".join(out) + "\n"
-    w = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
-    line = lambda cells: " | ".join(c.rjust(w[i]) for i, c in enumerate(cells))
-    sep = "-+-".join("-" * wi for wi in w)
-    out = ["", title, "=" * len(sep), line(headers), sep]
-    out += [line(r) for r in rows]
-    out += [sep] + [f"  {n}" for n in notes]
-    return "\n".join(out)
-
-
-def fmt_n(N):
-    return f"{int(N):,}"
-
-
-def fmt_gflops(x):
-    return f"{x:.2f} GFLOP/s"
-
-
-def fmt_gbs(x):
-    return f"{x:.1f} GB/s"
-
-
-def fmt_spread(r):
-    """Run-to-run spread: how much slower the median call is than the best one."""
-    return f"{(r.t_median_s - r.t_min_s) / r.t_median_s * 100:.0f} %"
-
-
-def scaling_table(df, op, label):
-    """Table 1: does time grow exactly like the amount of work?"""
-    p = EXPECTED_P[op]
-    rows, prev = [], {}
-    for N in sorted(pick(df, op, "float32").N):
-        row = [fmt_n(N), fmt_count(kernels.flops(op, N)) + "FLOP"]
-        for d in DTYPES:
-            r = pick(df, op, d, N)
-            t = r.t_median_s
-            g = f"x{t / prev[d]:.2f}" if d in prev else "-"
-            row += [fmt_time(t), g, fmt_gflops(r.GFLOPs_median)]
-            prev[d] = t
-        rows.append(row)
-    headers = ["N", "work", "f32 time", "f32 growth", "f32 performance",
-               "f64 time", "f64 growth", "f64 performance"]
-    notes = [f"N grows by sqrt(2) per row: if time ~ N^{p}, time grows "
-             f"x{np.sqrt(2) ** p:.2f} per row and performance stays flat.",
-             "At small N growth is below that: the fixed cost of each call "
-             "dominates the arithmetic."]
-    return (f"TABLE 1 ({NAME[op]}, {label}): execution time vs problem size", headers,
-            rows, notes)
-
-
-def exponent_table(frames):
-    """Table 2: fitted exponent per regime -> proof of N^2 / N^3 scaling."""
-    rows = []
-    for label, frame in frames:
-        for op in ("matvec", "matmul"):
-            for d in DTYPES:
-                s = pick(frame, op, d)
-                if op == "matvec":
-                    data = kernels.bytes_min(op, s.N, np.dtype(d).itemsize)
-                    regimes = (("data fits in cache", s[data <= CACHE_BYTES]),
-                               ("data in main memory", s[data > CACHE_BYTES]))
-                else:
-                    regimes = (("N >= 256", s[s.N >= 256]),)
-                for name, sub in regimes:
-                    rows.append([NAME[op], d, label, name,
-                                 f"{fmt_n(sub.N.min())} - {fmt_n(sub.N.max())}",
-                                 f"{fit_p(sub):.2f}", str(EXPECTED_P[op])])
-    headers = ["operation", "dtype", "threads", "regime", "N range",
-               "fitted p", "expected p"]
-    notes = ["Least-squares fit of log(time) = p log(N) + c inside each regime.",
-             "p close to the expected value = time grows linearly with the work "
-             "(2N^2 or 2N^3 FLOP)."]
-    return "TABLE 2: fitted scaling exponent (time ~ N^p)", headers, rows, notes
-
-
-def cache_table(df, df1, d):
-    """Table 3: matrix-vector bandwidth as the matrix outgrows the cache."""
-    s_ = np.dtype(d).itemsize
-    rows = []
-    for N in sorted(pick(df, "matvec", d).N):
-        data = kernels.bytes_min("matvec", N, s_)
-        r_all = pick(df, "matvec", d, N)
-        row = [fmt_n(N), fmt_size(data), cache_level(data)]
-        if df1 is not None:
-            r1 = pick(df1, "matvec", d, N)
-            row += [fmt_gbs(r1.GBs_median), fmt_gflops(r1.GFLOPs_median),
-                    fmt_spread(r1)]
-        row += [fmt_gbs(r_all.GBs_median), fmt_gflops(r_all.GFLOPs_median),
-                fmt_spread(r_all)]
-        rows.append(row)
-    headers = ["N", "data (A+x+y)", "data lives in"]
-    if df1 is not None:
-        headers += ["bandwidth 1 thr", "performance 1 thr", "spread 1 thr"]
-    headers += ["bandwidth all thr", "performance all thr", "spread all thr"]
-    notes = [f"'cache' = the whole working set fits in the "
-             f"{fmt_size(CACHE_BYTES)} CPU cache; 'main memory' = it must stream "
-             "from main memory on every call.",
-             "spread = (median time - best time) / median time. Small spread = "
-             "reproducible point; large spread = noisy, trust it less."]
-    return (f"TABLE 3 ({d}): matrix-vector speed, cache vs main memory",
-            headers, rows, notes)
-
-
-def cache_summary(df, df1):
-    """Table 4: one line per memory level, the condensed cache proof."""
-    frame, label = (df1, "1 thread") if df1 is not None else (df, "all threads")
-    rows = []
-    best = {}
-    stats = {}
-    for d in DTYPES:
-        s = pick(frame, "matvec", d)
-        lvl = s.bytes_min.map(cache_level)
-        stats[d] = s.groupby(lvl).GBs_median.median()
-        best[d] = stats[d].max()
-    for name in LEVELS:
-        if not any(name in stats[d].index for d in DTYPES):
-            continue
-        row = [name]
-        for d in DTYPES:
-            v = stats[d].get(name)
-            row += ["-", "-"] if v is None else [fmt_gbs(v), f"{v / best[d] * 100:.0f} %"]
-        rows.append(row)
-    headers = ["data lives in", "f32 bandwidth", "f32 vs best",
-               "f64 bandwidth", "f64 vs best"]
-    notes = [f"Median matrix-vector bandwidth ({label}) over all sizes in each group.",
-             f"Theoretical main-memory bandwidth B_mem: {B_THEO:.1f} GB/s."]
-    return (f"TABLE 4: cache vs main memory, matrix-vector ({label})",
-            headers, rows, notes)
-
-
-def print_tables(df, df1):
-    frames = [("1", df1)] if df1 is not None else []
-    frames.append(("all", df))
-    main, main_label = (df1, "1 thread") if df1 is not None else (df, "all threads")
-    tables = [scaling_table(main, "matvec", main_label),
-              scaling_table(main, "matmul", main_label),
-              exponent_table(frames),
-              cache_table(df, df1, "float32"),
-              cache_table(df, df1, "float64"),
-              cache_summary(df, df1)]
-    for t in tables:
-        print(render(*t))
-    md_path = os.path.join(RES, "tables.md")
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write("# Benchmark tables\n\n")
-        f.write("\n".join(render(*t, md=True) for t in tables))
-    print(f"\nTables also written to {os.path.relpath(md_path, HERE)}")
+    failed = [r for r in rows if r["correct"] != "True"]
+    if failed:
+        print(f"WARNING: {len(failed)} points failed the correctness check")
 
 
 def main():
-    os.makedirs(FIG, exist_ok=True)
-    df, info = load("allt")
-    df1, info1 = load("1t")
-    # Measured main-memory bandwidth: best bandwidth-probe result (copy/add of
-    # 256 MB arrays). It is NOT taken from the matrix-vector results, so the
-    # matrix-vector points are judged against an independent ceiling.
-    B_meas = max(info["stream"].values())
-    if info1 is not None:
-        B_meas = max(B_meas, *info1["stream"].values())
-    P_meas = {d: df[(df.op == "matmul") & (df.dtype == d)].GFLOPs_median.max()
-              for d in ("float32", "float64")}
+    os.makedirs(FIGURES, exist_ok=True)
+    files = sorted(glob.glob(os.path.join(RESULTS, "bench_*.csv")))
+    if not files:
+        raise SystemExit("No results found. Run benchmark.py first.")
 
-    fig_time(df, df1)
-    fig_perf(df, df1, B_meas)
-    fig_roofline(df, B_meas, P_meas)
+    for path in files:
+        tag = os.path.basename(path)[len("bench_"):-len(".csv")]
+        rows = read_results(path)
+        plot_time(rows, tag)
+        plot_performance(rows, tag)
+        plot_roofline(rows, tag)
+        print_summary(rows, tag)
 
-    peak = lambda P: " | ".join(f"{d} {fmt_gflops(P[d])}" for d in DTYPES)
-    print(f"Theoretical: bandwidth {fmt_gbs(B_THEO)} | peak (base clock) "
-          f"{peak(P_PEAK)} | peak (max turbo) {peak(P_TURBO)}")
-    print(f"Measured:    bandwidth {fmt_gbs(B_meas)} | best {peak(P_meas)}")
-    for label, inf in (("all threads", info), ("1 thread", info1)):
-        if inf is not None:
-            s = inf["stream"]
-            print(f"STREAM probe ({label}): copy {fmt_gbs(s['copy_GBs'])} | "
-                  f"add {fmt_gbs(s['add_GBs'])}")
-    if not (df.correct.all() and (df1 is None or df1.correct.all())):
-        print("WARNING: some results failed the correctness check")
-    print_tables(df, df1)
+    print(f"\nFigures written to {os.path.relpath(FIGURES, HERE)}/")
 
 
 if __name__ == "__main__":

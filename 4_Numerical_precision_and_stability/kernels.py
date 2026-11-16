@@ -1,9 +1,9 @@
 """Kernels and theoretical models for the Roofline homework.
 
-Both operations are implemented with NumPy (which calls the BLAS library
-NumPy was built against, OpenBLAS here). The output arrays are allocated
-once outside the timed region and passed through ``out=`` so that the
-timed region contains only the arithmetic.
+Both operations are implemented with NumPy, which passes them to the BLAS
+library it was built against. The output arrays are allocated once outside
+the timed region and passed through ``out=`` so that the timed region
+contains only the arithmetic.
 """
 import numpy as np
 
@@ -28,20 +28,10 @@ def init_arrays(N, dtype, op):
     raise ValueError(op)
 
 
-def matvec(A, x, out):
-    """y = A x  (BLAS level 2, GEMV)."""
-    return np.matmul(A, x, out=out)
-
-
-def matmul(A, B, out):
-    """C = A B  (BLAS level 3, GEMM)."""
-    return np.matmul(A, B, out=out)
-
-
 def run(op, arrays):
-    if op == "matvec":
-        return matvec(arrays["A"], arrays["x"], arrays["out"])
-    return matmul(arrays["A"], arrays["B"], arrays["out"])
+    """y = A x (BLAS level 2, GEMV) or C = A B (BLAS level 3, GEMM)."""
+    second = arrays["x"] if op == "matvec" else arrays["B"]
+    return np.matmul(arrays["A"], second, out=arrays["out"])
 
 
 def check(op, arrays, N):
@@ -79,20 +69,3 @@ def bytes_min(op, N, s):
     if op == "matvec":
         return (N**2 + 2.0 * N) * s
     return 3.0 * N**2 * s
-
-
-def bytes_noreuse(op, N, s):
-    """Pessimistic traffic: every operand is re-read from memory for every
-    multiply-add (no cache reuse at all). Used only as a lower bound on I.
-
-    matvec: A_ij and x_j for each of N^2 terms + write y -> (2N^2 + N) s
-    matmul: A_ik and B_kj for each of N^3 terms + write C -> (2N^3 + N^2) s
-    """
-    if op == "matvec":
-        return (2.0 * N**2 + N) * s
-    return (2.0 * N**3 + N**2) * s
-
-
-def intensity(op, N, s, model="min"):
-    b = bytes_min(op, N, s) if model == "min" else bytes_noreuse(op, N, s)
-    return flops(op, N) / b
